@@ -1,0 +1,60 @@
+trigger:
+  branches:
+    include:
+    - NodeJs-App
+pool:
+  name: 'aws-private-agent'
+variables:
+- name: RDS_HOSTNAME
+  value: 'RDS-endpoint'
+- name: RDS_PORT
+  value: '3306'
+- name: REDIS_HOSTNAME
+  value: 'REDIS-endpoint'
+- name: REDIS_PORT
+  value: '6379'
+# the rest of the evn vars encrypted in the pipline vars
+stages:
+- stage: CI
+  displayName: 'Continuous Integration'
+  jobs:
+  - job: Build
+    displayName: 'Build Job'
+    steps:
+    - task: CmdLine@2
+      displayName: 'Docker Build'
+      inputs:
+        script: |
+          sudo docker build -f dockerfile -t nodejsapp .
+- stage: CD
+  displayName: 'Continuous Deployment'
+  dependsOn:
+  - CI
+  jobs:
+  - job: Deploy
+    displayName: 'Deploy Job'
+    steps:
+    - task: CmdLine@2
+      displayName: 'Run Docker Container'
+      inputs:
+        script: |
+          # Stop and remove the existing container if it exists
+          containerName=nodejsapp_container
+          existingContainer=$(sudo docker ps -aqf name=${containerName})
+          echo ${existingContainer}
+
+          if [ -n "${existingContainer}" ]; then
+            sudo docker stop ${containerName}
+            sudo docker rm ${containerName}
+          fi
+
+          # Run the Docker container
+          sudo docker run -d -p 3000:3000 \
+          -e RDS_HOSTNAME=$(RDS_HOSTNAME) \
+          -e RDS_USERNAME=$(RDS_USERNAME) \
+          -e RDS_PASSWORD=$(RDS_PASSWORD) \
+          -e RDS_PORT=$(RDS_PORT) \
+          -e REDIS_HOSTNAME=$(REDIS_HOSTNAME) \
+          -e REDIS_PORT=$(REDIS_PORT) \
+          --name nodejsapp_container nodejsapp
+
